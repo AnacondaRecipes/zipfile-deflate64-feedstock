@@ -11,8 +11,13 @@ source:
   sha256: 875a3299de102edf1c17f8cafcc528b1ca80b62dc4814b9cb56867ec59fbfd18
 
 build:
-  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
   number: 3
+  script:
+    # Xcode 16.3+ predefines TARGET_OS_MAC, which makes the bundled zlib 1.2.11
+    # take its classic-MacOS branch and define fdopen(fd,mode) NULL, breaking
+    # the fdopen prototype in stdio.h on osx-arm64.
+    - export CPPFLAGS="${CPPFLAGS} -UTARGET_OS_MAC"
+    - {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
 
 requirements:
   build:
