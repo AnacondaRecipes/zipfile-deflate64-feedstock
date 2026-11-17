@@ -50,9 +50,12 @@ about:
   summary: Extract Deflate64 ZIP archives with Python's zipfile API.
   dev_url: https://github.com/brianhelba/zipfile-deflate64
   doc_url: https://github.com/brianhelba/zipfile-deflate64#readme
-  license: Apache-2.0
-  license_family: Apache
-  license_file: LICENSE
+  license: Apache-2.0 AND Zlib
+  license_family: Other
+  license_file:
+    - LICENSE
+    # vendored zlib (zutil.c, contrib/infback9) is compiled in; zlib.h carries its license notice
+    - zlib/zlib.h
 
 extra:
   recipe-maintainers:
