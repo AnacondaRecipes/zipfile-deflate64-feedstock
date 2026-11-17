@@ -13,10 +13,13 @@ source:
 build:
   number: 3
   script:
-    # Xcode 16.3+ predefines TARGET_OS_MAC, which makes the bundled zlib 1.2.11
-    # take its classic-MacOS branch and define fdopen(fd,mode) NULL, breaking
-    # the fdopen prototype in stdio.h on osx-arm64.
-    - export CPPFLAGS="${CPPFLAGS} -UTARGET_OS_MAC"
+    # zlib 1.2.11 (zlib/zutil.h:133) takes its classic-MacOS branch when TARGET_OS_MAC is
+    # defined, then does `#define fdopen(fd,mode) NULL`, which mangles the SDK prototype:
+    # "stdio.h:210:7: error: expected identifier or '('". TARGET_OS_MAC is a compiler
+    # predefine of our Apple clang (cctools 1030.6.3, Xcode 16.3-era) - not set by this
+    # recipe - and it breaks every py version on osx, not just 3.15. conda-forge does not
+    # need this because their llvm clang does not define it.
+    - export CPPFLAGS="${CPPFLAGS} -UTARGET_OS_MAC"  # [osx]
     - {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
 
 requirements:
