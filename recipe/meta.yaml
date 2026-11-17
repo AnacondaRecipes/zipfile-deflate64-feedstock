@@ -3,25 +3,32 @@
 
 
 package:
-  name: {{ name|lower }}
+  name: {{ name }}
   version: {{ version }}
 
 source:
-  url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
+  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
   sha256: 875a3299de102edf1c17f8cafcc528b1ca80b62dc4814b9cb56867ec59fbfd18
+  patches:
+    # Vendored zlib: 0.2.0 ships cielavenir/zlib@beaec8d (zlib 1.2.11 + resumable infback9).
+    # 0001 swaps in stock madler/zlib v1.4 files; 0002 re-applies the resumable commit.
+    # Vendored zlib version after patching: 1.4. Not unvendorable: conda zlib lacks infback9.
+    - patches/0001-Update-vendored-zlib-subset-from-1.2.11-to-1.4.patch
+    - patches/0002-made-infback9-resumable.patch
 
 build:
+  number: 3
   script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
-  number: 2
 
 requirements:
   build:
     - {{ compiler('c') }}
+    - {{ stdlib('c') }}
   host:
     - pip
     - python
-    - setuptools
-    - setuptools-scm
+    - setuptools >=42
+    - setuptools-scm >=3.4
     - toml
     - wheel
   run:
@@ -32,6 +39,8 @@ test:
     - zipfile_deflate64
   commands:
     - pip check
+    # Chunked decode exercises the resumable infback9 (patch 0002); upstream's fixtures are git-lfs only.
+    - python -c "import zlib; from zipfile_deflate64.deflate64 import Deflate64; raw = b''.join(b'Sample content ' + str(i).encode() + b'.\n' for i in range(100000)); c = zlib.compressobj(9, zlib.DEFLATED, -15); z = c.compress(raw) + c.flush(); d = Deflate64(); out = b''.join(d.decompress(z[i:i+4096]) for i in range(0, len(z), 4096)); assert out == raw"
   requires:
     - pip
 
