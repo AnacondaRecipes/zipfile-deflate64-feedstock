@@ -1,0 +1,215 @@
+From 18de02b4d422b6fbac0724145a2a41790957e12b Mon Sep 17 00:00:00 2001
+From: cielavenir <cielartisan@gmail.com>
+Date: Tue, 14 Sep 2021 07:02:39 +0900
+Subject: [PATCH] made infback9 resumable
+
+Unmodified copy of cielavenir/zlib@beaec8dc39f5caa86e808611b10f2ea0ab8720c2
+(https://github.com/cielavenir/zlib/commit/beaec8dc39f5caa86e808611b10f2ea0ab8720c2),
+the zlib fork that zipfile-deflate64 0.2.0 vendors as a git submodule. It applies to
+zlib 1.4 without conflicts. zipfile-deflate64 relies on it to decode a stream over
+repeated calls; stock infback9 fails upstream's test_decompress_repeated.
+
+Note: inflateBack9Init does not initialize the saved state fields, so callers must
+supply a zero-initializing zalloc (zipfile-deflate64 uses PyMem_Calloc).
+---
+ contrib/infback9/infback9.c | 68 +++++++++++++++++++++++++++++++------
+ contrib/infback9/inflate9.h | 23 +++++++++++++
+ 2 files changed, 81 insertions(+), 10 deletions(-)
+
+diff --git a/contrib/infback9/infback9.c b/contrib/infback9/infback9.c
+index 4ac4c3d..8e9b0ea 100644
+--- a/contrib/infback9/infback9.c
++++ b/contrib/infback9/infback9.c
+@@ -37,6 +37,10 @@ int ZEXPORT inflateBack9Init_(z_stream FAR *strm, unsigned char FAR *window,
+     Tracev((stderr, "inflate: allocated\n"));
+     strm->state = (voidpf)state;
+     state->window = window;
++    state->mode = TYPE;
++
++    strm->next_out = window;
++    strm->avail_out = WSIZE;
+     return Z_OK;
+ }
+ 
+@@ -246,18 +250,33 @@ int ZEXPORT inflateBack9(z_stream FAR *strm, in_func in, void FAR *in_desc,
+ 
+     /* Reset the state */
+     strm->msg = Z_NULL;
+-    mode = TYPE;
+-    lastblock = 0;
+-    wrap = 0;
++    //mode = TYPE;
++    //lastblock = 0;
++    //wrap = 0;
+     window = state->window;
+     next = strm->next_in;
+     have = next != Z_NULL ? strm->avail_in : 0;
+-    hold = 0;
+-    bits = 0;
+-    put = window;
+-    left = WSIZE;
+-    lencode = Z_NULL;
+-    distcode = Z_NULL;
++    //hold = 0;
++    //bits = 0;
++    //put = window;
++    //left = WSIZE;
++    //lencode = Z_NULL;
++    //distcode = Z_NULL;
++
++    put = strm->next_out; // next_out does not mean API buffer
++    left = strm->avail_out;
++    mode = state->mode;
++    wrap = state->wrap; // wrap meaning is different from inflate.c
++    hold = state->hold;
++    bits = state->bits;
++    extra = state->extra;
++    length = state->length;
++    offset = state->offset;
++    lencode = state->lencode;
++    distcode = state->distcode;
++    lenbits = state->lenbits;
++    distbits = state->distbits;
++    lastblock = state->last;
+ 
+     /* Inflate until end of block marked as last */
+     for (;;)
+@@ -312,7 +331,8 @@ int ZEXPORT inflateBack9(z_stream FAR *strm, in_func in, void FAR *in_desc,
+             Tracev((stderr, "inflate:       stored length %lu\n",
+                     length));
+             INITBITS();
+-
++            mode = COPY;
++        case COPY:
+             /* copy stored block from input to output */
+             while (length != 0) {
+                 copy = length;
+@@ -349,6 +369,8 @@ int ZEXPORT inflateBack9(z_stream FAR *strm, in_func in, void FAR *in_desc,
+ 
+             /* get code length code lengths (not a typo) */
+             state->have = 0;
++            mode = LENLENS;
++        case LENLENS:
+             while (state->have < state->ncode) {
+                 NEEDBITS(3);
+                 state->lens[order[state->have++]] = (unsigned short)BITS(3);
+@@ -370,6 +392,8 @@ int ZEXPORT inflateBack9(z_stream FAR *strm, in_func in, void FAR *in_desc,
+ 
+             /* get length and distance code code lengths */
+             state->have = 0;
++            mode = CODELENS;
++        case CODELENS:
+             while (state->have < state->nlen + state->ndist) {
+                 for (;;) {
+                     here = lencode[BITS(lenbits)];
+@@ -502,6 +526,8 @@ int ZEXPORT inflateBack9(z_stream FAR *strm, in_func in, void FAR *in_desc,
+ 
+             /* length code -- get extra bits, if any */
+             extra = (unsigned)(here.op) & 31;
++            mode = LENEXT;
++        case LENEXT:
+             if (extra != 0) {
+                 NEEDBITS(extra);
+                 length += BITS(extra);
+@@ -510,6 +536,8 @@ int ZEXPORT inflateBack9(z_stream FAR *strm, in_func in, void FAR *in_desc,
+             Tracevv((stderr, "inflate:         length %lu\n", length));
+ 
+             /* get distance code */
++            mode = DIST;
++        case DIST:
+             for (;;) {
+                 here = distcode[BITS(distbits)];
+                 if ((unsigned)(here.bits) <= bits) break;
+@@ -535,6 +563,8 @@ int ZEXPORT inflateBack9(z_stream FAR *strm, in_func in, void FAR *in_desc,
+ 
+             /* get distance extra bits, if any */
+             extra = (unsigned)(here.op) & 15;
++            mode = DISTEXT;
++        case DISTEXT:
+             if (extra != 0) {
+                 NEEDBITS(extra);
+                 offset += BITS(extra);
+@@ -548,6 +578,8 @@ int ZEXPORT inflateBack9(z_stream FAR *strm, in_func in, void FAR *in_desc,
+             Tracevv((stderr, "inflate:         distance %lu\n", offset));
+ 
+             /* copy match from window to output */
++            mode = MATCH;
++        case MATCH:
+             do {
+                 ROOM();
+                 copy = WSIZE - offset;
+@@ -566,6 +598,7 @@ int ZEXPORT inflateBack9(z_stream FAR *strm, in_func in, void FAR *in_desc,
+                     *put++ = *from++;
+                 } while (--copy);
+             } while (length != 0);
++            mode = LEN;
+             break;
+ 
+         case DONE:
+@@ -588,8 +621,23 @@ int ZEXPORT inflateBack9(z_stream FAR *strm, in_func in, void FAR *in_desc,
+ 
+     /* Return unused input */
+   inf_leave:
++    strm->next_out = put;
++    strm->avail_out = left;
+     strm->next_in = next;
+     strm->avail_in = have;
++    
++    state->mode = mode;
++    state->wrap = wrap;
++    state->hold = hold;
++    state->bits = bits;
++    state->extra = extra;
++    state->length = length;
++    state->offset = offset;
++    state->lencode = lencode;
++    state->distcode = distcode;
++    state->lenbits = lenbits;
++    state->distbits = distbits;
++    state->last = lastblock;
+     return ret;
+ }
+ 
+diff --git a/contrib/infback9/inflate9.h b/contrib/infback9/inflate9.h
+index ee9a793..418d937 100644
+--- a/contrib/infback9/inflate9.h
++++ b/contrib/infback9/inflate9.h
+@@ -12,8 +12,16 @@
+ typedef enum {
+         TYPE,       /* i: waiting for type bits, including last-flag bit */
+         STORED,     /* i: waiting for stored size (length and complement) */
++        COPY,
+         TABLE,      /* i: waiting for dynamic block table lengths */
++        LENLENS,
++        CODELENS,
+             LEN,        /* i: waiting for length/lit code */
++            LENEXT,
++            DIST,
++            DISTEXT,
++            MATCH,
++            LIT,
+     DONE,       /* finished check, done -- remain here until reset */
+     BAD         /* got a data error -- remain here until reset */
+ } inflate_mode;
+@@ -35,6 +43,21 @@ typedef enum {
+ struct inflate_state {
+         /* sliding window */
+     unsigned char FAR *window;  /* allocated sliding window, if needed */
++
++    inflate_mode mode;
++    int last;
++    int wrap;
++    unsigned long hold;
++    unsigned bits;
++    unsigned extra;
++    unsigned length;
++    unsigned offset;
++
++    code const FAR *lencode;
++    code const FAR *distcode;
++    unsigned lenbits;
++    unsigned distbits;
++
+         /* dynamic table building */
+     unsigned ncode;             /* number of code length code lengths */
+     unsigned nlen;              /* number of length code lengths */

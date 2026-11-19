@@ -5,6 +5,8 @@
 meta.yaml text eol=lf
 build.sh text eol=lf
 bld.bat text eol=crlf
+recipe/bld_zipfile.bat text eol=crlf
+recipe/infback9/infback9-resumable.def text eol=crlf
 
 # github helper pieces to make some files not show up in diffs automatically
 .azure-pipelines/* linguist-generated=true
