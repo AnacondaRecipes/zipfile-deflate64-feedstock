@@ -1,6 +1,10 @@
 {% set name = "zipfile-deflate64" %}
 {% set version = "0.2.0" %}
 {% set zlib_version = "1.4" %}
+# One build number for every output, only ever increased (never reset, even when zlib_version
+# changes): with --skip-existing, bumping one output alone skips its released siblings and
+# conda-build then fails reading their unbuilt .conda files (FileNotFoundError).
+{% set build_number = 3 %}
 {% set upstream_rev = "beec33184da6da4697a1994c0ac4c64cef8cff50" %}
 
 package:
@@ -17,38 +21,38 @@ source:
   # (replaces the sdist's vendored zlib/ copy, which is deleted before the wrapper build).
   - url: https://github.com/madler/zlib/releases/download/v{{ zlib_version }}/zlib-{{ zlib_version }}.tar.gz
     sha256: 02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584
-    folder: zlib-{{ zlib_version }}
+    folder: zlib-src
     patches:
       # Unmodified cielavenir/zlib@beaec8d, the resumable variant zipfile-deflate64 needs.
       - patches/infback9/0001-made-infback9-resumable.patch
   # Upstream tests at the v0.2.0 commit; their Git LFS fixtures come from the pinned files below.
-  - url: https://github.com/brianhelba/zipfile-deflate64/archive/{{ upstream_rev }}.tar.gz
+  - url: https://github.com/brianhelba/{{ name }}/archive/{{ upstream_rev }}.tar.gz
     sha256: 1b6c340ade8020c0c04c72e5282b3051e93cdbc7c720fc913dcab6751d4e8e01
     folder: upstream-tests
-  - url: https://media.githubusercontent.com/media/brianhelba/zipfile-deflate64/beec33184da6da4697a1994c0ac4c64cef8cff50/tests/data/10_lines.deflate64
+  - url: https://media.githubusercontent.com/media/brianhelba/{{ name }}/{{ upstream_rev }}/tests/data/10_lines.deflate64
     fn: zd64-10_lines.deflate64
     sha256: 242310459d440eb371a77f471bdf60f955ca573262fdc34875e55923a2830320
     folder: fixture-downloads
-  - url: https://media.githubusercontent.com/media/brianhelba/zipfile-deflate64/beec33184da6da4697a1994c0ac4c64cef8cff50/tests/data/100_lines.deflate64
+  - url: https://media.githubusercontent.com/media/brianhelba/{{ name }}/{{ upstream_rev }}/tests/data/100_lines.deflate64
     fn: zd64-100_lines.deflate64
     sha256: 2334ae9276fbb5ef7ca5be68fa016ad5d260b76ea1954184485df8c4004a2bb6
     folder: fixture-downloads
-  - url: https://media.githubusercontent.com/media/brianhelba/zipfile-deflate64/beec33184da6da4697a1994c0ac4c64cef8cff50/tests/data/10k_lines.deflate64
+  - url: https://media.githubusercontent.com/media/brianhelba/{{ name }}/{{ upstream_rev }}/tests/data/10k_lines.deflate64
     fn: zd64-10k_lines.deflate64
     sha256: 52dcf23a116fdfd59e5209319bcb3256e6f33934d678da35041eb84e6f782675
     folder: fixture-downloads
-  - url: https://media.githubusercontent.com/media/brianhelba/zipfile-deflate64/beec33184da6da4697a1994c0ac4c64cef8cff50/tests/data/100k_lines.deflate64
+  - url: https://media.githubusercontent.com/media/brianhelba/{{ name }}/{{ upstream_rev }}/tests/data/100k_lines.deflate64
     fn: zd64-100k_lines.deflate64
     sha256: 0f84dda296e42387a8cddf8555a9d7f92a9fe38369605211a753252c3925bf42
     folder: fixture-downloads
-  - url: https://media.githubusercontent.com/media/brianhelba/zipfile-deflate64/beec33184da6da4697a1994c0ac4c64cef8cff50/tests/data/deflate64.zip
+  - url: https://media.githubusercontent.com/media/brianhelba/{{ name }}/{{ upstream_rev }}/tests/data/deflate64.zip
     # not ".zip": conda-build would try to extract it and cannot read Deflate64
     fn: zd64-deflate64.zip.fixture
     sha256: a72f3319c3e77a0f33c8ec1a1064abfdebbc54ecdbd7e664b5134834e39fda74
     folder: fixture-downloads
 
 build:
-  number: 3
+  number: {{ build_number }}
 
 requirements:
   build:
@@ -64,7 +68,7 @@ outputs:
   - name: libinfback9-resumable
     version: {{ zlib_version }}
     build:
-      number: 0
+      number: {{ build_number }}
       run_exports:
         - {{ pin_subpackage('libinfback9-resumable', max_pin='x') }}
     requirements:
@@ -80,7 +84,7 @@ outputs:
         - python
       files:
         - infback9/tests/check_exports.py
-      commands:
+      commands:  # analint: missing_pip_check  # C library output, not a Python package
         - python infback9/tests/check_exports.py ${PREFIX}/lib/libinfback9-resumable.so.1     # [linux]
         - python infback9/tests/check_exports.py ${PREFIX}/lib/libinfback9-resumable.1.dylib  # [osx]
         - python infback9/tests/check_exports.py %LIBRARY_BIN%\infback9-resumable-1.dll       # [win]
@@ -96,12 +100,12 @@ outputs:
         zero-initializing zalloc; see include/infback9-resumable/infback9r.h.
       license: Zlib
       license_family: Other
-      license_file: zlib-{{ zlib_version }}/LICENSE
+      license_file: zlib-src/LICENSE
 
   - name: infback9-resumable
     version: {{ zlib_version }}
     build:
-      number: 0
+      number: {{ build_number }}
       run_exports:
         - {{ pin_subpackage('libinfback9-resumable', max_pin='x') }}
     requirements:
@@ -117,7 +121,7 @@ outputs:
       - Library/include/infback9-resumable    # [win]
       - Library/lib/infback9-resumable.lib    # [win]
     test:  # analint: missing_imports_or_run_test_py  # C library output, not a Python package
-      commands:
+      commands:  # analint: missing_pip_check  # C library output, not a Python package
         - test -f ${PREFIX}/include/infback9-resumable/infback9r.h              # [unix]
         - test -f ${PREFIX}/lib/libinfback9-resumable${SHLIB_EXT}               # [unix]
         - if not exist %LIBRARY_INC%\infback9-resumable\infback9r.h exit 1      # [win]
@@ -132,14 +136,14 @@ outputs:
         (with the matching zlib {{ zlib_version }} zlib.h, zconf.h and infback9.h) and the link library.
       license: Zlib
       license_family: Other
-      license_file: zlib-{{ zlib_version }}/LICENSE
+      license_file: zlib-src/LICENSE
 
   - name: {{ name }}
     version: {{ version }}
-    script: build_zipfile.sh   # [unix]
-    script: bld_zipfile.bat    # [win]
+    script: {{ "bld_zipfile.bat" if win else "build_zipfile.sh" }}
     build:
-      number: 3
+      number: {{ build_number }}
+      skip: true  # [py<36]
     requirements:
       build:
         - {{ compiler('c') }}
@@ -195,15 +199,11 @@ about:
   license_family: Other
   license_file:
     - LICENSE
-    - zlib-{{ zlib_version }}/LICENSE
+    - zlib-src/LICENSE
 
 extra:
   recipe-maintainers:
     - sarthakpati
   skip-lints:
-    # The linter treats every output as a PyPI package (the first source is a PyPI sdist). These fire only
-    # on the C-library outputs libinfback9-resumable / infback9-resumable, which have no python, no build
-    # tool and nothing for pip check; the zipfile-deflate64 output satisfies all three.
-    - missing_python
-    - missing_python_build_tool
-    - missing_pip_check
+    - missing_python             # C-library outputs have no requirements/run section to annotate; the python output has python
+    - missing_python_build_tool  # C-library outputs have no requirements/host section to annotate; the python output has setuptools

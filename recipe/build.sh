@@ -6,7 +6,7 @@ set -euxo pipefail
 cmake -S "${RECIPE_DIR}/infback9" -B build-infback9 -G Ninja ${CMAKE_ARGS} \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
-    -DZLIB_SRC="${SRC_DIR}/zlib-1.4" \
+    -DZLIB_SRC="${SRC_DIR}/zlib-src" \
     -DINFBACK9R_TESTS=ON
 cmake --build build-infback9
 "${PYTHON}" "${RECIPE_DIR}/infback9/tests/run_decode_matrix.py" \
