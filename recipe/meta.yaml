@@ -1,62 +1,209 @@
 {% set name = "zipfile-deflate64" %}
 {% set version = "0.2.0" %}
-
+{% set zlib_version = "1.4" %}
+{% set upstream_rev = "beec33184da6da4697a1994c0ac4c64cef8cff50" %}
 
 package:
-  name: {{ name }}
+  name: {{ name }}-split
   version: {{ version }}
 
 source:
-  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
-  sha256: 875a3299de102edf1c17f8cafcc528b1ca80b62dc4814b9cb56867ec59fbfd18
-  patches:
-    # Vendored zlib: 0.2.0 ships cielavenir/zlib@beaec8d (zlib 1.2.11 + resumable infback9).
-    # 0001 swaps in stock madler/zlib v1.4 files; 0002 re-applies the resumable commit.
-    # Vendored zlib version after patching: 1.4. Not unvendorable: conda zlib lacks infback9.
-    - patches/0001-Update-vendored-zlib-subset-from-1.2.11-to-1.4.patch
-    - patches/0002-made-infback9-resumable.patch
+  - url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
+    sha256: 875a3299de102edf1c17f8cafcc528b1ca80b62dc4814b9cb56867ec59fbfd18
+    patches:
+      # Packaging: compile only the Python wrapper and link libinfback9-resumable.
+      - patches/0001-link-shared-infback9-resumable.patch
+  # zlib's contrib/infback9 Deflate64 decoder, built below as libinfback9-resumable
+  # (replaces the sdist's vendored zlib/ copy, which is deleted before the wrapper build).
+  - url: https://github.com/madler/zlib/releases/download/v{{ zlib_version }}/zlib-{{ zlib_version }}.tar.gz
+    sha256: 02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584
+    folder: zlib-{{ zlib_version }}
+    patches:
+      # Unmodified cielavenir/zlib@beaec8d, the resumable variant zipfile-deflate64 needs.
+      - patches/infback9/0001-made-infback9-resumable.patch
+  # Upstream tests at the v0.2.0 commit; their Git LFS fixtures come from the pinned files below.
+  - url: https://github.com/brianhelba/zipfile-deflate64/archive/{{ upstream_rev }}.tar.gz
+    sha256: 1b6c340ade8020c0c04c72e5282b3051e93cdbc7c720fc913dcab6751d4e8e01
+    folder: upstream-tests
+  - url: https://media.githubusercontent.com/media/brianhelba/zipfile-deflate64/beec33184da6da4697a1994c0ac4c64cef8cff50/tests/data/10_lines.deflate64
+    fn: zd64-10_lines.deflate64
+    sha256: 242310459d440eb371a77f471bdf60f955ca573262fdc34875e55923a2830320
+    folder: fixture-downloads
+  - url: https://media.githubusercontent.com/media/brianhelba/zipfile-deflate64/beec33184da6da4697a1994c0ac4c64cef8cff50/tests/data/100_lines.deflate64
+    fn: zd64-100_lines.deflate64
+    sha256: 2334ae9276fbb5ef7ca5be68fa016ad5d260b76ea1954184485df8c4004a2bb6
+    folder: fixture-downloads
+  - url: https://media.githubusercontent.com/media/brianhelba/zipfile-deflate64/beec33184da6da4697a1994c0ac4c64cef8cff50/tests/data/10k_lines.deflate64
+    fn: zd64-10k_lines.deflate64
+    sha256: 52dcf23a116fdfd59e5209319bcb3256e6f33934d678da35041eb84e6f782675
+    folder: fixture-downloads
+  - url: https://media.githubusercontent.com/media/brianhelba/zipfile-deflate64/beec33184da6da4697a1994c0ac4c64cef8cff50/tests/data/100k_lines.deflate64
+    fn: zd64-100k_lines.deflate64
+    sha256: 0f84dda296e42387a8cddf8555a9d7f92a9fe38369605211a753252c3925bf42
+    folder: fixture-downloads
+  - url: https://media.githubusercontent.com/media/brianhelba/zipfile-deflate64/beec33184da6da4697a1994c0ac4c64cef8cff50/tests/data/deflate64.zip
+    # not ".zip": conda-build would try to extract it and cannot read Deflate64
+    fn: zd64-deflate64.zip.fixture
+    sha256: a72f3319c3e77a0f33c8ec1a1064abfdebbc54ecdbd7e664b5134834e39fda74
+    folder: fixture-downloads
 
 build:
   number: 3
-  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
 
 requirements:
   build:
     - {{ compiler('c') }}
     - {{ stdlib('c') }}
+    - cmake
+    - ninja-base
   host:
-    - pip
-    - python
-    - setuptools >=42
-    - setuptools-scm >=3.4
-    - toml
-    - wheel
-  run:
+    # build.sh/bld.bat run the library's decode check with this python
     - python
 
-test:
-  imports:
-    - zipfile_deflate64
-  commands:
-    - pip check
-    # Chunked decode exercises the resumable infback9 (patch 0002); upstream's fixtures are git-lfs only.
-    - python -c "import zlib; from zipfile_deflate64.deflate64 import Deflate64; raw = b''.join(b'Sample content ' + str(i).encode() + b'.\n' for i in range(100000)); c = zlib.compressobj(9, zlib.DEFLATED, -15); z = c.compress(raw) + c.flush(); d = Deflate64(); out = b''.join(d.decompress(z[i:i+4096]) for i in range(0, len(z), 4096)); assert out == raw"
-  requires:
-    - pip
+outputs:
+  - name: libinfback9-resumable
+    version: {{ zlib_version }}
+    build:
+      number: 0
+      run_exports:
+        - {{ pin_subpackage('libinfback9-resumable', max_pin='x') }}
+    requirements:
+      build:
+        - {{ compiler('c') }}
+        - {{ stdlib('c') }}
+    files:
+      - lib/libinfback9-resumable.so.1        # [linux]
+      - lib/libinfback9-resumable.1.dylib     # [osx]
+      - Library/bin/infback9-resumable-1.dll  # [win]
+    test:  # analint: missing_imports_or_run_test_py  # C library output, not a Python package
+      requires:
+        - python
+      files:
+        - infback9/tests/check_exports.py
+      commands:
+        - python infback9/tests/check_exports.py ${PREFIX}/lib/libinfback9-resumable.so.1     # [linux]
+        - python infback9/tests/check_exports.py ${PREFIX}/lib/libinfback9-resumable.1.dylib  # [osx]
+        - python infback9/tests/check_exports.py %LIBRARY_BIN%\infback9-resumable-1.dll       # [win]
+    about:
+      home: https://zlib.net
+      dev_url: https://github.com/madler/zlib
+      doc_url: https://github.com/madler/zlib/tree/develop/contrib/infback9
+      summary: Deflate64 decoder from zlib's contrib/infback9, resumable variant (runtime library)
+      description: |
+        zlib {{ zlib_version }} contrib/infback9 (inflateBack9, the Deflate64 decoder) plus the
+        cielavenir/zlib "made infback9 resumable" commit, built as a shared library that exports
+        only infback9r_init_, infback9r_decode and infback9r_end. Callers must supply a
+        zero-initializing zalloc; see include/infback9-resumable/infback9r.h.
+      license: Zlib
+      license_family: Other
+      license_file: zlib-{{ zlib_version }}/LICENSE
+
+  - name: infback9-resumable
+    version: {{ zlib_version }}
+    build:
+      number: 0
+      run_exports:
+        - {{ pin_subpackage('libinfback9-resumable', max_pin='x') }}
+    requirements:
+      build:
+        - {{ compiler('c') }}
+        - {{ stdlib('c') }}
+      run:
+        - {{ pin_subpackage('libinfback9-resumable', exact=True) }}
+    files:
+      - include/infback9-resumable            # [unix]
+      - lib/libinfback9-resumable.so          # [linux]
+      - lib/libinfback9-resumable.dylib       # [osx]
+      - Library/include/infback9-resumable    # [win]
+      - Library/lib/infback9-resumable.lib    # [win]
+    test:  # analint: missing_imports_or_run_test_py  # C library output, not a Python package
+      commands:
+        - test -f ${PREFIX}/include/infback9-resumable/infback9r.h              # [unix]
+        - test -f ${PREFIX}/lib/libinfback9-resumable${SHLIB_EXT}               # [unix]
+        - if not exist %LIBRARY_INC%\infback9-resumable\infback9r.h exit 1      # [win]
+        - if not exist %LIBRARY_LIB%\infback9-resumable.lib exit 1              # [win]
+    about:
+      home: https://zlib.net
+      dev_url: https://github.com/madler/zlib
+      doc_url: https://github.com/madler/zlib/tree/develop/contrib/infback9
+      summary: Deflate64 decoder from zlib's contrib/infback9, resumable variant (headers and link library)
+      description: |
+        Development files for libinfback9-resumable: include/infback9-resumable/infback9r.h
+        (with the matching zlib {{ zlib_version }} zlib.h, zconf.h and infback9.h) and the link library.
+      license: Zlib
+      license_family: Other
+      license_file: zlib-{{ zlib_version }}/LICENSE
+
+  - name: {{ name }}
+    version: {{ version }}
+    script: build_zipfile.sh   # [unix]
+    script: bld_zipfile.bat    # [win]
+    build:
+      number: 3
+    requirements:
+      build:
+        - {{ compiler('c') }}
+        - {{ stdlib('c') }}
+      host:
+        - pip
+        - python
+        - setuptools >=42
+        - setuptools-scm >=3.4
+        - toml
+        - wheel
+        - {{ pin_subpackage('infback9-resumable', exact=True) }}
+      run:
+        - python
+        # sibling outputs' run_exports are not applied within one recipe (cf. xgboost's libxgboost);
+        # same range the run_export gives external consumers, so library fixes need no rebuild here.
+        - {{ pin_subpackage('libinfback9-resumable', max_pin='x') }}
+    test:
+      imports:
+        - zipfile_deflate64
+      source_files:
+        - upstream-tests/tests
+        - fixture-downloads
+      files:
+        - tests/run_upstream_tests.py
+      requires:
+        - pip
+        - pytest
+      commands:
+        - pip check
+        # Chunked decode exercises the resumable decoder in libinfback9-resumable.
+        - python -c "import zlib; from zipfile_deflate64.deflate64 import Deflate64; raw = b''.join(b'Sample content ' + str(i).encode() + b'.\n' for i in range(100000)); c = zlib.compressobj(9, zlib.DEFLATED, -15); z = c.compress(raw) + c.flush(); d = Deflate64(); out = b''.join(d.decompress(z[i:i+4096]) for i in range(0, len(z), 4096)); assert out == raw"
+        # The extension links the decoder; it must not contain the decoder itself.
+        - python -c "import pathlib, zipfile_deflate64.deflate64 as m; assert b'invalid distance too far back' not in pathlib.Path(m.__file__).read_bytes()"
+        - python tests/run_upstream_tests.py
+    about:
+      description: Extract Deflate64 ZIP archives with Python's 'zipfile' API
+      home: https://github.com/brianhelba/zipfile-deflate64
+      summary: Extract Deflate64 ZIP archives with Python's zipfile API.
+      dev_url: https://github.com/brianhelba/zipfile-deflate64
+      doc_url: https://github.com/brianhelba/zipfile-deflate64#readme
+      license: Apache-2.0
+      license_family: Apache
+      license_file: LICENSE
 
 about:
-  description: Extract Deflate64 ZIP archives with Python's 'zipfile' API
   home: https://github.com/brianhelba/zipfile-deflate64
-  summary: Extract Deflate64 ZIP archives with Python's zipfile API.
+  summary: Extract Deflate64 ZIP archives with Python's zipfile API, and the Deflate64 decoder library it links.
+  description: Builds zipfile-deflate64 and libinfback9-resumable (zlib contrib/infback9, resumable variant).
   dev_url: https://github.com/brianhelba/zipfile-deflate64
   doc_url: https://github.com/brianhelba/zipfile-deflate64#readme
   license: Apache-2.0 AND Zlib
   license_family: Other
   license_file:
     - LICENSE
-    # vendored zlib (zutil.c, contrib/infback9) is compiled in; zlib.h carries its license notice
-    - zlib/zlib.h
+    - zlib-{{ zlib_version }}/LICENSE
 
 extra:
   recipe-maintainers:
     - sarthakpati
+  skip-lints:
+    # The linter treats every output as a PyPI package (the first source is a PyPI sdist). These fire only
+    # on the C-library outputs libinfback9-resumable / infback9-resumable, which have no python, no build
+    # tool and nothing for pip check; the zipfile-deflate64 output satisfies all three.
+    - missing_python
+    - missing_python_build_tool
+    - missing_pip_check

@@ -1,0 +1,8 @@
+{
+  global:
+    infback9r_init_;
+    infback9r_decode;
+    infback9r_end;
+  local:
+    *;
+};

@@ -1,0 +1,5 @@
+LIBRARY infback9-resumable-1
+EXPORTS
+    infback9r_init_
+    infback9r_decode
+    infback9r_end

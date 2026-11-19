@@ -1,0 +1,59 @@
+From 6713794971b0d10c94cfb761e7ca92b19d94cd77 Mon Sep 17 00:00:00 2001
+From: Xianglong Kong <xkong@anaconda.com>
+Date: Wed, 18 Nov 2026 18:31:45 -0600
+Subject: [PATCH] Link the shared libinfback9-resumable instead of vendored
+ zlib
+
+Packaging change: compile only the Python wrapper and link the conda package
+libinfback9-resumable (zlib 1.4 contrib/infback9 + the cielavenir resumable
+commit) instead of the vendored zlib/ sources. Its renamed entry points are
+mapped by infback9r.h; INFBACK9_INCLUDE points at its header directory.
+---
+ setup.py                                      | 14 ++++----------
+ zipfile_deflate64/deflate64/deflate64module.c |  4 +---
+ 2 files changed, 5 insertions(+), 13 deletions(-)
+
+diff --git a/setup.py b/setup.py
+index 9aaf99a..7712a6f 100644
+--- a/setup.py
++++ b/setup.py
+@@ -1,3 +1,4 @@
++import os
+ from pathlib import Path
+ 
+ from setuptools import Extension, find_packages, setup
+@@ -42,16 +43,9 @@ setup(
+     ext_modules=[
+         Extension(
+             'zipfile_deflate64.deflate64',
+-            [
+-                'zlib/zutil.c',
+-                'zlib/contrib/infback9/infback9.c',
+-                'zlib/contrib/infback9/inftree9.c',
+-                'zipfile_deflate64/deflate64/deflate64module.c',
+-            ],
+-            include_dirs=[
+-                'zlib',
+-                'zlib/contrib/infback9',
+-            ],
++            ['zipfile_deflate64/deflate64/deflate64module.c'],
++            include_dirs=[os.environ['INFBACK9_INCLUDE']],
++            libraries=['infback9-resumable'],
+         ),
+     ],
+ )
+diff --git a/zipfile_deflate64/deflate64/deflate64module.c b/zipfile_deflate64/deflate64/deflate64module.c
+index 521582e..0dc1a2b 100644
+--- a/zipfile_deflate64/deflate64/deflate64module.c
++++ b/zipfile_deflate64/deflate64/deflate64module.c
+@@ -2,9 +2,7 @@
+ #include <Python.h>
+ #include <structmember.h>
+ 
+-// "zutil.h" has necessary #defines for "infback9.h"
+-#include "zutil.h"
+-#include "infback9.h"
++#include "infback9r.h"
+ 
+ typedef struct {
+     PyObject_HEAD

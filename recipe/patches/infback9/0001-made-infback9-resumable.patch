@@ -1,22 +1,25 @@
-From 00fafcb8e79e8d024dfbbc3d9589e330062f5bea Mon Sep 17 00:00:00 2001
+From 18de02b4d422b6fbac0724145a2a41790957e12b Mon Sep 17 00:00:00 2001
 From: cielavenir <cielartisan@gmail.com>
 Date: Tue, 14 Sep 2021 07:02:39 +0900
 Subject: [PATCH] made infback9 resumable
 
-Re-applied on top of zlib 1.4. Originally cielavenir/zlib@beaec8dc39f5caa86e808611b10f2ea0ab8720c2
+Unmodified copy of cielavenir/zlib@beaec8dc39f5caa86e808611b10f2ea0ab8720c2
 (https://github.com/cielavenir/zlib/commit/beaec8dc39f5caa86e808611b10f2ea0ab8720c2),
-the vendored zlib of the zipfile-deflate64 0.2.0 sdist; it applies to 1.4
-without conflicts. deflate64module.c relies on it to decompress a stream
-over repeated calls; stock infback9 fails upstream's test_decompress_repeated.
+the zlib fork that zipfile-deflate64 0.2.0 vendors as a git submodule. It applies to
+zlib 1.4 without conflicts. zipfile-deflate64 relies on it to decode a stream over
+repeated calls; stock infback9 fails upstream's test_decompress_repeated.
+
+Note: inflateBack9Init does not initialize the saved state fields, so callers must
+supply a zero-initializing zalloc (zipfile-deflate64 uses PyMem_Calloc).
 ---
- zlib/contrib/infback9/infback9.c | 68 +++++++++++++++++++++++++++-----
- zlib/contrib/infback9/inflate9.h | 23 +++++++++++
+ contrib/infback9/infback9.c | 68 +++++++++++++++++++++++++++++++------
+ contrib/infback9/inflate9.h | 23 +++++++++++++
  2 files changed, 81 insertions(+), 10 deletions(-)
 
-diff --git a/zlib/contrib/infback9/infback9.c b/zlib/contrib/infback9/infback9.c
+diff --git a/contrib/infback9/infback9.c b/contrib/infback9/infback9.c
 index 4ac4c3d..8e9b0ea 100644
---- a/zlib/contrib/infback9/infback9.c
-+++ b/zlib/contrib/infback9/infback9.c
+--- a/contrib/infback9/infback9.c
++++ b/contrib/infback9/infback9.c
 @@ -37,6 +37,10 @@ int ZEXPORT inflateBack9Init_(z_stream FAR *strm, unsigned char FAR *window,
      Tracev((stderr, "inflate: allocated\n"));
      strm->state = (voidpf)state;
@@ -167,10 +170,10 @@ index 4ac4c3d..8e9b0ea 100644
      return ret;
  }
  
-diff --git a/zlib/contrib/infback9/inflate9.h b/zlib/contrib/infback9/inflate9.h
+diff --git a/contrib/infback9/inflate9.h b/contrib/infback9/inflate9.h
 index ee9a793..418d937 100644
---- a/zlib/contrib/infback9/inflate9.h
-+++ b/zlib/contrib/infback9/inflate9.h
+--- a/contrib/infback9/inflate9.h
++++ b/contrib/infback9/inflate9.h
 @@ -12,8 +12,16 @@
  typedef enum {
          TYPE,       /* i: waiting for type bits, including last-flag bit */
