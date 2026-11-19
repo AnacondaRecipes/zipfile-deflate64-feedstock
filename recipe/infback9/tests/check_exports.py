@@ -1,7 +1,13 @@
-"""Check that libinfback9-resumable exports exactly its 3 renamed entry points.
+"""Check libinfback9-resumable's exports: its 3 renamed entry points must be
+visible, and a list of known-unwanted names (stock infback9 names, zlib
+internals compiled into the library) must not be.
+
+This does not enumerate the whole export table (ctypes cannot); the exact
+three-symbol boundary is enforced at link time by infback9r.map (ELF),
+infback9r.exp (Mach-O) and infback9-resumable.def (Windows).
 
 usage: python check_exports.py <path to the shared library>
-Exits 0 when the allowlist holds, 1 otherwise.
+Exits 0 when both checks hold, 1 otherwise.
 """
 import ctypes
 import sys
